@@ -19,7 +19,11 @@ st.set_page_config(
 @st.cache_resource
 def get_search_checker():
     """검색 체커를 캐시하여 재사용"""
-    return SearchRankChecker(config)
+    try:
+        return SearchRankChecker(config)
+    except Exception as e:
+        st.error(f"검색 체커 초기화 오류: {e}")
+        return None
 
 # CSS 스타일
 st.markdown("""
@@ -63,7 +67,8 @@ def load_clinics():
         else:
             # config.py에서 기본 정보 로드
             return config.DENTAL_CLINICS
-    except:
+    except Exception as e:
+        st.error(f"치과 정보 로드 오류: {e}")
         return []
 
 def save_clinics(clinics):
@@ -289,6 +294,10 @@ def run_search_process(delay):
         # 검색 순위 체커 초기화
         status_text.text("🔧 검색 순위 체커 초기화 중...")
         checker = get_search_checker()
+        if checker is None:
+            st.error("검색 체커 초기화에 실패했습니다.")
+            return
+            
         progress_bar.progress(10)
         
         all_results = []
