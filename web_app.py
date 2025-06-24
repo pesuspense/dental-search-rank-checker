@@ -15,6 +15,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# 웹 배포를 위한 설정
+@st.cache_resource
+def get_search_checker():
+    """검색 체커를 캐시하여 재사용"""
+    return SearchRankChecker(config)
+
 # CSS 스타일
 st.markdown("""
 <style>
@@ -282,7 +288,7 @@ def run_search_process(delay):
     try:
         # 검색 순위 체커 초기화
         status_text.text("🔧 검색 순위 체커 초기화 중...")
-        checker = SearchRankChecker(config)
+        checker = get_search_checker()
         progress_bar.progress(10)
         
         all_results = []
