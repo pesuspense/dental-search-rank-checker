@@ -8,11 +8,11 @@ from search_rank_checker import SearchRankChecker
 import config
 
 def print_banner():
-    """프로그램 시작 배너 출력"""
+    """프로그램 배너 출력"""
     print("=" * 60)
-    print("치과 거래처 검색노출 순위 체크 프로그램")
+    print("🏥 치과 거래처 검색노출 순위 체크 프로그램")
     print("=" * 60)
-    print(f"실행 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("네이버 블로그, 웹, 플레이스 검색에서 치과 순위를 체크합니다.")
     print()
 
 def check_config():
@@ -52,10 +52,10 @@ def main():
             print(f"\n🔍 [{i}/{len(config.DENTAL_CLINICS)}] {clinic['name']} 검색 중...")
             print("-" * 40)
             
-            # 블로그 검색 순위 체크
-            print("📝 블로그 검색 순위 체크 중...")
-            blog_results = checker.check_blog_rank(clinic['name'], clinic['keywords'])
-            all_results.extend(blog_results)
+            # 모든 검색 유형에 대한 순위 체크 (블로그, 웹, 플레이스)
+            print("📝 모든 검색 유형 순위 체크 중...")
+            search_results = checker.check_all_ranks(clinic['name'], clinic['keywords'])
+            all_results.extend(search_results)
             
             print(f"✅ {clinic['name']} 검색 완료")
         
@@ -73,11 +73,20 @@ def main():
                 
                 print(f"\n🏥 {clinic['name']}:")
                 
-                # 블로그 결과
-                blog_results = [r for r in clinic_results if r['search_type'] == '블로그']
-                for result in blog_results:
-                    rank_text = f"{result['rank']}위" if isinstance(result['rank'], int) else result['rank']
-                    print(f"  📝 블로그 ({result['keyword']}): {rank_text}")
+                # 검색 유형별 결과
+                search_types = {}
+                for result in clinic_results:
+                    search_type = result['search_type']
+                    if search_type not in search_types:
+                        search_types[search_type] = []
+                    search_types[search_type].append(result)
+                
+                for search_type, results in search_types.items():
+                    print(f"  🔍 {search_type}:")
+                    for result in results:
+                        rank_text = f"{result['rank']}위" if isinstance(result['rank'], int) else result['rank']
+                        area_text = f"({result['search_area']})" if result['search_area'] != '일반' else ""
+                        print(f"    - {result['keyword']}: {rank_text} {area_text}")
             
             print(f"\n✅ 모든 검색이 완료되었습니다!")
             print(f"📁 결과 파일: {filepath}")

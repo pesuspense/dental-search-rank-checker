@@ -36,6 +36,7 @@ st.markdown("""
     }
     .clinic-card {
         background-color: #f0f2f6;
+        color: #222;
         padding: 1rem;
         border-radius: 0.5rem;
         margin: 1rem 0;
@@ -197,10 +198,24 @@ def search_page():
         st.subheader("검색 설정")
         delay = st.slider("요청 간 지연시간 (초)", 1, 5, 2)
         
-        # 치과 정보 표시
+        # 검색 유형 선택
+        st.subheader("🔍 검색 유형")
+        search_types = st.multiselect(
+            "검색할 유형 선택 (복수 선택 가능)",
+            ["블로그", "웹", "플레이스"],
+            default=["블로그"]  # 기본값: 블로그만
+        )
+        
+        # 치과 정보 표시 및 선택
         st.subheader("📋 등록된 치과")
         clinics = load_clinics()
+        clinic_names = [clinic['name'] for clinic in clinics]
         if clinics:
+            selected_clinics = st.multiselect(
+                "검색할 치과 선택 (복수 선택 가능)",
+                clinic_names,
+                default=clinic_names  # 기본값: 전체 선택
+            )
             for i, clinic in enumerate(clinics, 1):
                 with st.expander(f"{i}. {clinic['name']}"):
                     st.write(f"**주소:** {clinic['address']}")
@@ -215,6 +230,8 @@ def search_page():
         if st.button("🚀 검색 시작", type="primary", use_container_width=True):
             st.session_state.run_search = True
             st.session_state.delay = delay
+            st.session_state.selected_clinics = selected_clinics if clinics else []
+            st.session_state.search_types = search_types
     
     # 메인 영역
     col1, col2 = st.columns([2, 1])
@@ -224,7 +241,7 @@ def search_page():
         
         # 검색 실행
         if 'run_search' in st.session_state and st.session_state.run_search:
-            run_search_process(st.session_state.delay)
+            run_search_process(st.session_state.delay, st.session_state.selected_clinics, st.session_state.search_types)
             st.session_state.run_search = False
     
     with col2:
@@ -279,11 +296,23 @@ def show_previous_results():
     else:
         st.info("결과 폴더가 없습니다.")
 
-def run_search_process(delay):
+def run_search_process(delay, selected_clinic_names=None, search_types=None):
     """검색 프로세스 실행"""
     clinics = load_clinics()
     if not clinics:
         st.error("설정된 치과가 없습니다. '🏥 치과 관리' 메뉴에서 치과를 추가해주세요.")
+        return
+    
+    # 선택된 치과만 필터링
+    if selected_clinic_names is not None:
+        clinics = [clinic for clinic in clinics if clinic['name'] in selected_clinic_names]
+    if not clinics:
+        st.warning("선택된 치과가 없습니다.")
+        return
+    
+    # 검색 유형 확인
+    if not search_types:
+        st.warning("검색할 유형을 선택해주세요.")
         return
     
     # 진행 상황 표시
@@ -315,18 +344,19 @@ def run_search_process(delay):
                     <h3>🏥 {clinic['name']}</h3>
                     <p><strong>주소:</strong> {clinic['address']}</p>
                     <p><strong>키워드:</strong> {', '.join(clinic['keywords'])}</p>
+                    <p><strong>검색 유형:</strong> {', '.join(search_types)}</p>
                 </div>
                 """, unsafe_allow_html=True)
             
-            status_text.text(f"🔍 {clinic['name']} 검색 중...")
+            status_text.text(f"🔍 {clinic['name']} 검색 중... ({', '.join(search_types)})")
             
-            # 블로그 검색
-            blog_results = checker.check_blog_rank(clinic['name'], clinic['keywords'])
-            all_results.extend(blog_results)
+            # 선택된 검색 유형에 따라 검색 수행
+            search_results = checker.check_all_ranks(clinic['name'], clinic['keywords'], search_types)
+            all_results.extend(search_results)
             
             # 실시간 결과 표시
-            if blog_results:
-                df_temp = pd.DataFrame(blog_results)
+            if search_results:
+                df_temp = pd.DataFrame(search_results)
                 st.dataframe(df_temp, use_container_width=True)
             
             time.sleep(delay)
@@ -386,6 +416,11 @@ def show_search_summary(results):
             avg_rank = df[df['rank'].apply(lambda x: isinstance(x, int))]['rank'].mean()
             st.metric("평균 순위", f"{avg_rank:.1f}" if not pd.isna(avg_rank) else "N/A")
     
+    # 검색 유형별 통계
+    st.subheader("🔍 검색 유형별 결과")
+    search_type_counts = df['search_type'].value_counts()
+    st.bar_chart(search_type_counts)
+    
     # 결과 테이블
     st.subheader("📊 상세 결과")
     st.dataframe(df, use_container_width=True)
@@ -411,8 +446,13 @@ def show_statistics():
         clinic_counts = df['clinic_name'].value_counts()
         st.bar_chart(clinic_counts)
         
+        # 검색 유형별 결과 수
+        st.subheader("🔍 검색 유형별 결과")
+        search_type_counts = df['search_type'].value_counts()
+        st.bar_chart(search_type_counts)
+        
         # 키워드별 결과 수
-        st.subheader("🔍 키워드별 결과")
+        st.subheader("🔑 키워드별 결과")
         keyword_counts = df['keyword'].value_counts()
         st.bar_chart(keyword_counts)
         
