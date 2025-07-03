@@ -35,18 +35,22 @@ class SearchRankChecker:
                 response.raise_for_status()
                 soup = BeautifulSoup(response.text, 'html.parser')
 
-                # 1. 인기글 영역
-                popular_section = soup.find('section', class_='sc_new sp_nreview _fe_view_root _prs_usB_bsR')
+                     # 1. 인기글 영역
+                popular_section = soup.find(
+                    'section',
+                    class_='sc_new sp_nreview _fe_view_root _prs_ugB_bsR'
+                )
                 popular_found = False
                 if popular_section:
-                    blog_items = popular_section.find_all('li')
+                    blog_items = popular_section.select('ul.lst_view > li.bx')
                     rank = 0
                     for item in blog_items:
                         rank += 1
-                        title_elem = item.find('a', class_='title_link') or item.find('a', class_='api_txt_lines total_tit')
-                        content_elem = item.find('div', class_='dsc') or item.find('div', class_='api_txt_lines dsc_txt')
+                        # 인기글의 제목과 요약 텍스트
+                        title_elem   = item.select_one('.title_area a.title_link')
+                        content_elem = item.select_one('.dsc_area a.dsc_link')
                         if title_elem and content_elem:
-                            title = title_elem.get_text(strip=True)
+                            title   = title_elem.get_text(strip=True)
                             content = content_elem.get_text(strip=True)
                             if clinic_name in title or clinic_name in content:
                                 results.append({
@@ -73,16 +77,17 @@ class SearchRankChecker:
                             'content': ''
                         })
 
+
                 # 2. 일반 블로그 영역
                 normal_section = soup.find('section', class_='sc_new sp_ntotal _sp_ntotal _prs_web_gen _fe_root_web_gend')
                 normal_found = False
                 if normal_section:
-                    blog_items = normal_section.find_all('li')
+                    blog_items = normal_section.select('ul.lst_total > li.bx')
                     rank = 0
                     for item in blog_items:
                         rank += 1
-                        title_elem = item.find('a', class_='title_link') or item.find('a', class_='api_txt_lines total_tit')
-                        content_elem = item.find('div', class_='dsc') or item.find('div', class_='api_txt_lines dsc_txt')
+                        title_elem = item.select_one('a.link_tit')
+                        content_elem = item.select_one('a.api_txt_lines.total_dsc')
                         if title_elem and content_elem:
                             title = title_elem.get_text(strip=True)
                             content = content_elem.get_text(strip=True)
@@ -139,23 +144,33 @@ class SearchRankChecker:
                 response.raise_for_status()
                 soup = BeautifulSoup(response.text, 'html.parser')
 
-                # 웹 검색 결과 찾기
-                web_items = soup.find_all('li', class_='bx') or soup.find_all('div', class_='total_wrap')
+                # 1) '웹(통합)' 결과가 들어있는 section
+                section = soup.select_one('section.sc_new.sp_ntotal')
+                # 2) 그 안의 <ul class="lst_total"> 이하 항목들
+                web_items = section.select('ul.lst_total > li.bx') if section else []
+
                 rank = 0
                 found = False
-                
+
                 for item in web_items:
+                    # 광고/특집 블록 건너뛰기: 
+                    # (예: 별도 클래스가 붙어있다면 continue)
+                    if item.select_one('.api_sponsor') or item.select_one('.btn_save'):
+                        continue
+
                     rank += 1
-                    
-                    # 웹 검색 결과에서 제목과 내용 추출
-                    title_elem = item.find('a', class_='title_link') or item.find('a', class_='api_txt_lines total_tit')
-                    content_elem = item.find('div', class_='dsc') or item.find('div', class_='api_txt_lines dsc_txt')
-                    
-                    if title_elem and content_elem:
-                        title = title_elem.get_text(strip=True)
-                        content = content_elem.get_text(strip=True)
-                        
-                        # 치과명이 포함되어 있는지 확인
+
+                    # 제목 추출: <a class="link_tit"> 또는 <a class="link_tit" href=…>
+                    title_elem = item.select_one('a.link_tit')
+                    # 요약/본문 추출: <div class="api_txt_lines total_dsc">…
+                    content_elem = item.select_one('div.total_dsc_wrap .api_txt_lines')
+
+                    if title_elem:
+                        title   = title_elem.get_text(strip=True)
+                        url     = title_elem['href']
+                        content = content_elem.get_text(strip=True) if content_elem else ''
+
+                        # 클리닉명 포함 여부 체크
                         if clinic_name in title or clinic_name in content:
                             results.append({
                                 'clinic_name': clinic_name,
@@ -164,12 +179,12 @@ class SearchRankChecker:
                                 'search_area': '일반',
                                 'rank': rank,
                                 'title': title,
-                                'url': title_elem.get('href', ''),
-                                'content': content[:100] + '...' if len(content) > 100 else content
+                                'url': url,
+                                'content': (content[:100] + '...') if len(content) > 100 else content
                             })
                             found = True
                             break
-                
+
                 if not found:
                     results.append({
                         'clinic_name': clinic_name,
@@ -181,10 +196,9 @@ class SearchRankChecker:
                         'url': '',
                         'content': ''
                     })
-                
-                # 요청 간 지연
+
                 time.sleep(self.config.SEARCH_SETTINGS['delay_between_requests'])
-                
+
             except Exception as e:
                 print(f"웹 검색 중 오류 발생: {e}")
                 results.append({
@@ -197,8 +211,12 @@ class SearchRankChecker:
                     'url': '',
                     'content': str(e)
                 })
-        
+
         return results
+
+
+    from bs4 import BeautifulSoup
+    import time
 
     def check_place_rank(self, clinic_name, keywords):
         """네이버 플레이스 검색 순위 체크"""
@@ -211,66 +229,73 @@ class SearchRankChecker:
                 response.raise_for_status()
                 soup = BeautifulSoup(response.text, 'html.parser')
 
-                # 플레이스 검색 결과 찾기
-                place_items = soup.find_all('li', class_='YwYLL') or soup.find_all('div', class_='place_section')
+                # 실제 리스트 아이템
+                place_items = soup.select('ul.zPw6U > li.DWs4Q')
                 rank = 0
                 found = False
-                
+
                 for item in place_items:
+                    # 광고 배너 제거: '광고' 레이블이 있는 경우 스킵
+                    if item.select_one('.place_ad_label_text'):
+                        continue
+
                     rank += 1
-                    
-                    # 플레이스 검색 결과에서 제목과 주소 추출
-                    title_elem = item.find('a', class_='YwYLL') or item.find('span', class_='place_bluelink')
-                    address_elem = item.find('span', class_='addr') or item.find('div', class_='addr')
-                    
-                    if title_elem:
-                        title = title_elem.get_text(strip=True)
-                        address = address_elem.get_text(strip=True) if address_elem else ''
-                        
-                        # 치과명이 포함되어 있는지 확인
-                        if clinic_name in title or clinic_name in address:
-                            results.append({
-                                'clinic_name': clinic_name,
-                                'keyword': keyword,
-                                'search_type': '플레이스',
-                                'search_area': '일반',
-                                'rank': rank,
-                                'title': title,
-                                'url': title_elem.get('href', '') if hasattr(title_elem, 'get') else '',
-                                'content': address
-                            })
-                            found = True
-                            break
-                
+
+                    # 제목 요소
+                    title_a = item.select_one('div.LYTmB > a.place_bluelink')
+                    title = title_a.get_text(strip=True) if title_a else ''
+
+                    # 링크
+                    url = title_a['href'] if title_a and title_a.has_attr('href') else ''
+
+                    # 주소 요소
+                    addr_span = item.select_one('div.w32a4 span.Pb4bU')
+                    address = addr_span.get_text(strip=True) if addr_span else ''
+
+                    # 치과명 매칭
+                    if clinic_name in title or clinic_name in address:
+                        results.append({
+                            'clinic_name':   clinic_name,
+                            'keyword':       keyword,
+                            'search_type':   '플레이스',
+                            'search_area':   '일반',
+                            'rank':          rank,
+                            'title':         title,
+                            'url':           url,
+                            'content':       address,
+                        })
+                        found = True
+                        break
+
                 if not found:
                     results.append({
                         'clinic_name': clinic_name,
-                        'keyword': keyword,
+                        'keyword':     keyword,
                         'search_type': '플레이스',
                         'search_area': '일반',
-                        'rank': '순위 밖',
-                        'title': '',
-                        'url': '',
-                        'content': ''
+                        'rank':        '순위 밖',
+                        'title':       '',
+                        'url':         '',
+                        'content':     '',
                     })
-                
-                # 요청 간 지연
+
                 time.sleep(self.config.SEARCH_SETTINGS['delay_between_requests'])
-                
+
             except Exception as e:
                 print(f"플레이스 검색 중 오류 발생: {e}")
                 results.append({
                     'clinic_name': clinic_name,
-                    'keyword': keyword,
+                    'keyword':     keyword,
                     'search_type': '플레이스',
                     'search_area': '오류',
-                    'rank': '오류',
-                    'title': '',
-                    'url': '',
-                    'content': str(e)
+                    'rank':        '오류',
+                    'title':       '',
+                    'url':         '',
+                    'content':     str(e),
                 })
-        
+
         return results
+
 
     def check_all_ranks(self, clinic_name, keywords, search_types=None):
         """모든 검색 유형에 대한 순위 체크"""

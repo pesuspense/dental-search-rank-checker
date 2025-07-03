@@ -16,9 +16,8 @@ st.set_page_config(
 )
 
 # 웹 배포를 위한 설정
-@st.cache_resource
 def get_search_checker():
-    """검색 체커를 캐시하여 재사용"""
+    """검색 체커를 생성"""
     try:
         return SearchRankChecker(config)
     except Exception as e:
